@@ -105,9 +105,9 @@ class OpenListTileService : TileService() {
             AppConfig.isManuallyStoppedByUser = true
             val serviceInstance = OpenListService.serviceInstance
             if (serviceInstance != null && OpenListService.isRunning) {
+                Log.d(TAG, "Tile requesting graceful service shutdown")
                 serviceInstance.stopOpenListService()
             }
-            // 移除else分支的冗余stopService调用
             Log.d(TAG, "Service stop command sent from tile")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop service from tile", e)

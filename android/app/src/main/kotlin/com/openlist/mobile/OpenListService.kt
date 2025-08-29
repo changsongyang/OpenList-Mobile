@@ -143,6 +143,19 @@ class OpenListService : Service(), OpenList.Listener {
 
         serviceInstance = null
 
+        // 优雅关闭OpenList以确保数据库正确写入
+        if (isRunning) {
+            Log.d(TAG, "Gracefully shutting down OpenList on service destroy")
+            try {
+                // 同步关闭以确保数据库事务完成
+                OpenList.shutdown()
+                isRunning = false
+                Log.d(TAG, "OpenList gracefully shutdown on service destroy")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to gracefully shutdown OpenList on destroy", e)
+            }
+        }
+
         // 取消所有协程作业
         mScope.coroutineContext[Job]?.cancel()
 
@@ -195,11 +208,13 @@ class OpenListService : Service(), OpenList.Listener {
     private fun startOrShutdown() {
         if (isRunning) {
             Log.d(TAG, "Shutting down OpenList")
-            // 关闭操作在子线程中执行，避免阻塞主线程
+            // 关闭操作在子线程中执行，但需要确保数据库正确关闭
             mScope.launch(Dispatchers.IO) {
                 try {
+                    Log.d(TAG, "Beginning graceful OpenList shutdown...")
                     OpenList.shutdown()
                     isRunning = false
+                    Log.d(TAG, "OpenList shutdown completed successfully")
                     launch(Dispatchers.Main) {
                         notifyStatusChanged()
                     }

@@ -52,6 +52,17 @@ object OpenList : Event, LogCallback {
 
     override fun onShutdown(p0: String) {
         Log.d(TAG, "onShutdown: $p0")
+        
+        // 在关闭时确保数据库状态正确
+        try {
+            Log.d(TAG, "OpenList shutdown initiated, ensuring database integrity")
+            // 添加小延迟确保Go侧的数据库关闭逻辑完成
+            Thread.sleep(500)
+            Log.d(TAG, "Database shutdown delay completed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error during database shutdown protection", e)
+        }
+        
         mListeners.forEach { it.onShutdown(p0) }
     }
 
@@ -87,8 +98,18 @@ object OpenList : Event, LogCallback {
     fun shutdown() {
         Log.d(TAG, "shutdown")
         runCatching {
-            Openlistlib.shutdown(5000)
+            // 增加更长的超时时间以确保数据库正确关闭
+            Openlistlib.shutdown(10000)
+            Log.d(TAG, "OpenList shutdown completed")
+            
+            // 检查数据库状态
+            try {
+                com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to log database status after shutdown", e)
+            }
         }.onFailure {
+            Log.e(TAG, "shutdown failed", it)
             context.longToast(R.string.shutdown_failed)
         }
     }
@@ -97,6 +118,14 @@ object OpenList : Event, LogCallback {
     @Synchronized
     fun startup() {
         Log.d(TAG, "startup: $dataDir")
+        
+        // 检查启动前数据库状态
+        try {
+            com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusBeforeStart()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to log database status before start", e)
+        }
+        
         try {
             // 确保数据目录存在
             val dataDirFile = File(dataDir)
