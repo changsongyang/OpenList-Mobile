@@ -20,6 +20,14 @@ class App : FlutterApplication() {
 
         app = this
         
+        // 初始化Android进程保护
+        try {
+            com.openlist.mobile.utils.AndroidProcessManager.registerProcessProtection()
+            Log.d(TAG, "Android process protection initialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize process protection", e)
+        }
+        
         // 设置全局异常处理器来捕获未处理的异常
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e(TAG, "Uncaught exception in thread ${thread.name}", throwable)

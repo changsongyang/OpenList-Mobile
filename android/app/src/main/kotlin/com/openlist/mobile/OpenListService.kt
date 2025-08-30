@@ -28,6 +28,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import splitties.systemservices.powerManager
 
 /**
@@ -61,6 +63,9 @@ class OpenListService : Service(), OpenList.Listener {
     private val mNotificationReceiver = NotificationActionReceiver()
     private val mReceiver = MyReceiver()
     private var mWakeLock: PowerManager.WakeLock? = null
+    
+    // 数据库健康检查定时器
+    private var databaseHealthCheckJob: Job? = null
     private var mLocalAddress: String = ""
 
     override fun onBind(p0: Intent?): IBinder? = null
@@ -147,8 +152,13 @@ class OpenListService : Service(), OpenList.Listener {
         if (isRunning) {
             Log.d(TAG, "Gracefully shutting down OpenList on service destroy")
             try {
-                // 同步关闭以确保数据库事务完成
-                OpenList.shutdown()
+                // 使用runBlocking确保在服务销毁前完成关闭
+                runBlocking {
+                    withTimeout(10000) { // 10秒超时
+                        OpenList.shutdown()
+                        delay(1000) // 额外等待时间
+                    }
+                }
                 isRunning = false
                 Log.d(TAG, "OpenList gracefully shutdown on service destroy")
             } catch (e: Exception) {
@@ -208,13 +218,32 @@ class OpenListService : Service(), OpenList.Listener {
     private fun startOrShutdown() {
         if (isRunning) {
             Log.d(TAG, "Shutting down OpenList")
-            // 关闭操作在子线程中执行，但需要确保数据库正确关闭
+            // 使用runBlocking确保关闭操作完全完成
             mScope.launch(Dispatchers.IO) {
                 try {
                     Log.d(TAG, "Beginning graceful OpenList shutdown...")
-                    OpenList.shutdown()
+                    
+                    // 使用runBlocking确保shutdown完全完成
+                    runBlocking {
+                        withTimeout(15000) { // 15秒超时
+                            Log.d(TAG, "Calling OpenList.shutdown()...")
+                            OpenList.shutdown()
+                            
+                            // 等待额外时间确保数据库操作完成
+                            delay(2000)
+                            Log.d(TAG, "Post-shutdown delay completed")
+                            
+                            // 执行Android特有的数据库完整性检查
+                            com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
+                        }
+                    }
+                    
                     isRunning = false
                     Log.d(TAG, "OpenList shutdown completed successfully")
+                    
+                    // 停止数据库健康检查
+                    stopDatabaseHealthCheck()
+                    
                     launch(Dispatchers.Main) {
                         notifyStatusChanged()
                     }
@@ -245,6 +274,10 @@ class OpenListService : Service(), OpenList.Listener {
                         notifyStatusChanged()
                         toast("OpenList 启动成功")
                     }
+                    
+                    // 启动数据库健康检查
+                    startDatabaseHealthCheck()
+                    
                     Log.d(TAG, "Manual start completed successfully")
                 } catch (e: Exception) {
                     Log.e(TAG, "Manual startup error", e)
@@ -423,5 +456,54 @@ class OpenListService : Service(), OpenList.Listener {
                 }
             }
         }
+    }
+    
+    /**
+     * 启动数据库健康检查
+     * 定期检查WAL文件状态，在必要时进行预防性处理
+     */
+    private fun startDatabaseHealthCheck() {
+        // 取消之前的检查任务
+        databaseHealthCheckJob?.cancel()
+        
+        databaseHealthCheckJob = mScope.launch {
+            while (isActive && isRunning) {
+                try {
+                    delay(30000) // 每30秒检查一次
+                    
+                    if (!isRunning) break
+                    
+                    Log.d(TAG, "Performing periodic database health check")
+                    val status = com.openlist.mobile.utils.DatabaseIntegrityHelper.checkDatabaseWalFiles()
+                    
+                    // 检查WAL文件是否过大
+                    if (status.walSize > 50 * 1024 * 1024) { // 50MB
+                        Log.w(TAG, "WAL file is getting large: ${status.walSize / 1024 / 1024}MB")
+                        // 可以在这里触发一些预防性操作
+                    }
+                    
+                    // 检查进程健康状态
+                    val processHealth = com.openlist.mobile.utils.AndroidProcessManager.checkProcessHealth()
+                    if (processHealth.isInDanger) {
+                        Log.w(TAG, "Process is in danger, memory usage: ${processHealth.memoryUsagePercent}%")
+                        // 在危险情况下，可以考虑强制同步
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Database health check error", e)
+                }
+            }
+        }
+        
+        Log.d(TAG, "Database health check started")
+    }
+    
+    /**
+     * 停止数据库健康检查
+     */
+    private fun stopDatabaseHealthCheck() {
+        databaseHealthCheckJob?.cancel()
+        databaseHealthCheckJob = null
+        Log.d(TAG, "Database health check stopped")
     }
 }

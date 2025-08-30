@@ -99,15 +99,8 @@ object OpenList : Event, LogCallback {
         Log.d(TAG, "shutdown")
         runCatching {
             // 增加更长的超时时间以确保数据库正确关闭
-            Openlistlib.shutdown(10000)
+            Openlistlib.shutdown(15000) // 增加到15秒
             Log.d(TAG, "OpenList shutdown completed")
-            
-            // 检查数据库状态
-            try {
-                com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to log database status after shutdown", e)
-            }
         }.onFailure {
             Log.e(TAG, "shutdown failed", it)
             context.longToast(R.string.shutdown_failed)
