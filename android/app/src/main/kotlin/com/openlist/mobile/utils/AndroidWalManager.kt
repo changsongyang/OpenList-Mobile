@@ -83,7 +83,7 @@ object AndroidWalManager {
             var cleaned = false
             
             if (walFile.exists()) {
-                if (force || walFile.length() == 0) {
+                if (force || walFile.length() == 0L) {
                     val deleted = walFile.delete()
                     Log.d(TAG, "WAL file deletion: $deleted")
                     cleaned = cleaned || deleted
