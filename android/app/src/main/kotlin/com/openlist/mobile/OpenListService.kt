@@ -150,19 +150,18 @@ class OpenListService : Service(), OpenList.Listener {
 
         // 优雅关闭OpenList以确保数据库正确写入
         if (isRunning) {
-            Log.d(TAG, "Gracefully shutting down OpenList on service destroy")
+            Log.d(TAG, "Service destroy: sending graceful shutdown signal")
             try {
-                // 使用runBlocking确保在服务销毁前完成关闭
-                runBlocking {
-                    withTimeout(10000) { // 10秒超时
-                        OpenList.shutdown()
-                        delay(1000) // 额外等待时间
-                    }
-                }
+                // 关键：在主线程发送关闭信号，确保Go进程能正确接收SIGTERM
+                OpenList.shutdown()
+                
+                // 等待Go进程完成优雅关闭流程
+                Thread.sleep(3000) // 给足够时间让Go完成数据库关闭
+                
                 isRunning = false
-                Log.d(TAG, "OpenList gracefully shutdown on service destroy")
+                Log.d(TAG, "Service destroy: graceful shutdown completed")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to gracefully shutdown OpenList on destroy", e)
+                Log.e(TAG, "Service destroy: failed to send graceful shutdown signal", e)
             }
         }
 
@@ -218,40 +217,43 @@ class OpenListService : Service(), OpenList.Listener {
     private fun startOrShutdown() {
         if (isRunning) {
             Log.d(TAG, "Shutting down OpenList")
-            // 使用runBlocking确保关闭操作完全完成
-            mScope.launch(Dispatchers.IO) {
-                try {
-                    Log.d(TAG, "Beginning graceful OpenList shutdown...")
-                    
-                    // 使用runBlocking确保shutdown完全完成
-                    runBlocking {
-                        withTimeout(15000) { // 15秒超时
-                            Log.d(TAG, "Calling OpenList.shutdown()...")
-                            OpenList.shutdown()
-                            
-                            // 等待额外时间确保数据库操作完成
-                            delay(2000)
-                            Log.d(TAG, "Post-shutdown delay completed")
-                            
-                            // 执行Android特有的数据库完整性检查
-                            com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
+            // 重要：不能在子线程中发送关闭信号，因为Go进程的信号处理器可能需要特定的线程上下文
+            try {
+                Log.d(TAG, "Sending graceful shutdown signal to OpenList...")
+                
+                // 直接在当前线程发送关闭信号，确保信号正确传递
+                OpenList.shutdown()
+                
+                // 在子线程中等待和验证关闭结果
+                mScope.launch(Dispatchers.IO) {
+                    try {
+                        // 等待Go进程完成优雅关闭
+                        delay(3000)
+                        Log.d(TAG, "Verifying shutdown completion...")
+                        
+                        // 执行Android特有的数据库完整性检查
+                        com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
+                        
+                        isRunning = false
+                        Log.d(TAG, "OpenList shutdown verification completed")
+                        
+                        // 停止数据库健康检查
+                        stopDatabaseHealthCheck()
+                        
+                        launch(Dispatchers.Main) {
+                            notifyStatusChanged()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Shutdown verification error", e)
+                        launch(Dispatchers.Main) {
+                            toast("关闭验证失败: ${e.message}")
                         }
                     }
-                    
-                    isRunning = false
-                    Log.d(TAG, "OpenList shutdown completed successfully")
-                    
-                    // 停止数据库健康检查
-                    stopDatabaseHealthCheck()
-                    
-                    launch(Dispatchers.Main) {
-                        notifyStatusChanged()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Shutdown error", e)
-                    launch(Dispatchers.Main) {
-                        toast("关闭失败: ${e.message}")
-                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send shutdown signal", e)
+                mScope.launch(Dispatchers.Main) {
+                    toast("关闭信号发送失败: ${e.message}")
                 }
             }
         } else {

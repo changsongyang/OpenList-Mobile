@@ -96,10 +96,16 @@ object OpenList : Event, LogCallback {
 
 
     fun shutdown() {
-        Log.d(TAG, "shutdown")
+        Log.d(TAG, "shutdown - sending graceful termination signal")
         runCatching {
-            // 增加更长的超时时间以确保数据库正确关闭
+            // 发送SIGTERM信号而不是强制终止
+            // 这样Go侧的信号处理器可以正确执行优雅关闭
+            Log.d(TAG, "Sending SIGTERM signal to OpenList process...")
             Openlistlib.shutdown(15000) // 增加到15秒
+            Log.d(TAG, "OpenList shutdown signal sent, waiting for graceful termination...")
+            
+            // 给一些额外时间让Go侧完成优雅关闭流程
+            Thread.sleep(2000)
             Log.d(TAG, "OpenList shutdown completed")
         }.onFailure {
             Log.e(TAG, "shutdown failed", it)

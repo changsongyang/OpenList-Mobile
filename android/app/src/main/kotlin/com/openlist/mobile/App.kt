@@ -35,12 +35,15 @@ class App : FlutterApplication() {
             // 尝试优雅关闭OpenList以保护数据完整性
             try {
                 if (OpenListService.isRunning) {
-                    Log.w(TAG, "App crashing, attempting graceful OpenList shutdown")
+                    Log.w(TAG, "App crashing, sending emergency shutdown signal")
+                    // 在主线程发送关闭信号，确保信号正确传递
                     OpenList.shutdown()
-                    Log.d(TAG, "Emergency OpenList shutdown completed")
+                    // 给Go进程一点时间完成关闭
+                    Thread.sleep(2000)
+                    Log.d(TAG, "Emergency shutdown signal sent")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to emergency shutdown OpenList", e)
+                Log.e(TAG, "Failed to send emergency shutdown signal", e)
             }
             
             // 如果是 JNI 相关的错误，记录详细信息
@@ -63,12 +66,14 @@ class App : FlutterApplication() {
         // 确保在应用终止时正确关闭OpenList
         try {
             if (OpenListService.isRunning) {
-                Log.d(TAG, "App terminate: shutting down OpenList")
+                Log.d(TAG, "App terminate: sending shutdown signal")
+                // 在主线程发送关闭信号
                 OpenList.shutdown()
-                Log.d(TAG, "App terminate: OpenList shutdown completed")
+                Thread.sleep(2000) // 给Go进程时间完成关闭
+                Log.d(TAG, "App terminate: shutdown signal sent")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to shutdown OpenList on app terminate", e)
+            Log.e(TAG, "Failed to send shutdown signal on app terminate", e)
         }
     }
 }

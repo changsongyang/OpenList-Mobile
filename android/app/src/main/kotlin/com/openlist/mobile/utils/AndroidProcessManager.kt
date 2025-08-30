@@ -86,15 +86,13 @@ object AndroidProcessManager {
                     Log.w(TAG, "Emergency shutdown due to JVM termination")
                     
                     try {
-                        // 使用runBlocking尝试同步关闭
-                        runBlocking {
-                            withTimeout(5000) { // 5秒超时，因为关闭钩子时间有限
-                                OpenList.shutdown()
-                                Log.d(TAG, "Emergency shutdown completed")
-                            }
-                        }
+                        // 直接发送关闭信号，不使用协程，因为JVM正在关闭
+                        OpenList.shutdown()
+                        // 给Go进程时间完成关闭
+                        Thread.sleep(3000)
+                        Log.d(TAG, "JVM shutdown hook: signal sent")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Emergency shutdown failed", e)
+                        Log.e(TAG, "JVM shutdown hook: failed to send signal", e)
                     }
                 }
             })
