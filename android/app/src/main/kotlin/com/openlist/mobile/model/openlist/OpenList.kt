@@ -96,17 +96,17 @@ object OpenList : Event, LogCallback {
 
 
     fun shutdown() {
-        Log.d(TAG, "shutdown - initiating graceful termination via SIGTERM signal")
+        Log.d(TAG, "shutdown - calling Openlistlib.shutdown() with cmd.Release()")
         runCatching {
-            // 现在Openlistlib.shutdown()会真正发送SIGTERM信号
-            // 触发Go侧的信号处理器执行优雅关闭流程
-            Log.d(TAG, "Calling Openlistlib.shutdown() to send SIGTERM signal...")
+            // 现在Openlistlib.shutdown()会调用cmd.Release()
+            // cmd.Release()调用db.Close()来正确关闭数据库连接
+            Log.d(TAG, "Calling Openlistlib.shutdown() which will call cmd.Release() -> db.Close()...")
             Openlistlib.shutdown(15000) // 15秒超时
-            Log.d(TAG, "Openlistlib.shutdown() completed - SIGTERM signal sent and graceful shutdown initiated")
+            Log.d(TAG, "Openlistlib.shutdown() completed - database should be properly closed and WAL merged")
             
-            // 给一些额外时间让Go侧完成所有清理工作
+            // 给一些额外时间让所有清理工作完成
             Thread.sleep(2000)
-            Log.d(TAG, "OpenList graceful shutdown process completed")
+            Log.d(TAG, "OpenList shutdown process completed")
         }.onFailure {
             Log.e(TAG, "shutdown failed", it)
             context.longToast(R.string.shutdown_failed)
