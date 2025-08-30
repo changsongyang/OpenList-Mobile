@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/OpenListTeam/OpenList/v4/openlistlib/internal"
 	"github.com/OpenListTeam/OpenList/v4/cmd"
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/internal/bootstrap"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/openlistlib/internal"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server"
 	"github.com/gin-gonic/gin"
@@ -136,26 +136,6 @@ func Start() {
 		}()
 	}
 }
-	go func() {
-		utils.Log.Println("Signal handler started, waiting for SIGTERM/SIGINT...")
-		<-quitChannel // 等待信号
-		utils.Log.Println("Received shutdown signal, initiating graceful shutdown...")
-		performGracefulShutdown()
-	}()
-}
-
-func shutdown(srv *http.Server, timeout time.Duration) error {
-	if srv == nil {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	err := srv.Shutdown(ctx)
-
-	return err
-}
 
 func shutdown(srv *http.Server, timeout time.Duration) error {
 	if srv == nil {
@@ -174,13 +154,13 @@ func shutdown(srv *http.Server, timeout time.Duration) error {
 func Shutdown(timeout int64) (err error) {
 	timeoutDuration := time.Duration(timeout) * time.Millisecond
 	utils.Log.Println("Shutdown server with cmd.Release()...")
-	
+
 	// 首先调用cmd.Release()来清理数据库等资源
 	// 这应该会关闭SQLite连接并合并WAL文件
 	utils.Log.Println("Calling cmd.Release() to cleanup database and other resources...")
 	cmd.Release()
 	utils.Log.Println("cmd.Release() completed")
-	
+
 	// 然后关闭HTTP服务器
 	if conf.Conf.Scheme.HttpPort != -1 && httpSrv != nil {
 		err := shutdown(httpSrv, timeoutDuration)
@@ -191,7 +171,7 @@ func Shutdown(timeout int64) (err error) {
 		}
 		httpSrv = nil
 	}
-	
+
 	if conf.Conf.Scheme.HttpsPort != -1 && httpsSrv != nil {
 		err := shutdown(httpsSrv, timeoutDuration)
 		if err != nil {
@@ -201,7 +181,7 @@ func Shutdown(timeout int64) (err error) {
 		}
 		httpsSrv = nil
 	}
-	
+
 	if conf.Conf.Scheme.UnixFile != "" && unixSrv != nil {
 		err := shutdown(unixSrv, timeoutDuration)
 		if err != nil {
@@ -213,11 +193,11 @@ func Shutdown(timeout int64) (err error) {
 	}
 
 	utils.Log.Println("All servers shutdown completed")
-	
+
 	// 通知Android端关闭已完成
 	if event != nil {
 		event.OnShutdown("graceful")
 	}
-	
+
 	return nil
 }
