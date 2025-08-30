@@ -96,17 +96,18 @@ object OpenList : Event, LogCallback {
 
 
     fun shutdown() {
-        Log.d(TAG, "shutdown - calling Openlistlib.shutdown() with cmd.Release()")
+        Log.d(TAG, "shutdown - calling Openlistlib.shutdown() with WAL checkpoint")
         runCatching {
             // 现在Openlistlib.shutdown()会调用cmd.Release()
-            // cmd.Release()调用db.Close()来正确关闭数据库连接
-            Log.d(TAG, "Calling Openlistlib.shutdown() which will call cmd.Release() -> db.Close()...")
+            // cmd.Release()调用db.Close()，其中包含了PRAGMA wal_checkpoint(TRUNCATE)
+            // 这应该强制合并WAL文件到主数据库
+            Log.d(TAG, "Calling Openlistlib.shutdown() -> cmd.Release() -> db.Close() with WAL checkpoint...")
             Openlistlib.shutdown(15000) // 15秒超时
-            Log.d(TAG, "Openlistlib.shutdown() completed - database should be properly closed and WAL merged")
+            Log.d(TAG, "Openlistlib.shutdown() completed - WAL checkpoint should have merged database files")
             
             // 给一些额外时间让所有清理工作完成
             Thread.sleep(2000)
-            Log.d(TAG, "OpenList shutdown process completed")
+            Log.d(TAG, "OpenList shutdown process completed with WAL checkpoint")
         }.onFailure {
             Log.e(TAG, "shutdown failed", it)
             context.longToast(R.string.shutdown_failed)

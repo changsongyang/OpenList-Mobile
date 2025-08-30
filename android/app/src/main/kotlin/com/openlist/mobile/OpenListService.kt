@@ -234,6 +234,28 @@ class OpenListService : Service(), OpenList.Listener {
                         // 执行Android特有的数据库完整性检查
                         com.openlist.mobile.utils.DatabaseIntegrityHelper.logDatabaseStatusAfterShutdown()
                         
+                        // Android端强制WAL合并 - 解决Android特有的WAL文件不合并问题
+                        Log.d(TAG, "Performing Android-specific WAL checkpoint...")
+                        try {
+                            val dbPath = "${AppConfig.dataDir}/data.db"
+                            val success = com.openlist.mobile.utils.AndroidWalManager.forceWalCheckpoint(dbPath)
+                            if (success) {
+                                Log.d(TAG, "Android WAL checkpoint completed successfully")
+                            } else {
+                                Log.w(TAG, "Android WAL checkpoint failed, but continuing...")
+                            }
+                            
+                            // 验证WAL文件状态
+                            val walStatus = com.openlist.mobile.utils.AndroidWalManager.checkWalFileStatus(dbPath)
+                            walStatus.logStatus()
+                            
+                            if (walStatus.isWalActive()) {
+                                Log.w(TAG, "WAL file is still active after checkpoint, this may indicate an issue")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Android WAL checkpoint error", e)
+                        }
+                        
                         isRunning = false
                         Log.d(TAG, "OpenList shutdown verification completed")
                         
